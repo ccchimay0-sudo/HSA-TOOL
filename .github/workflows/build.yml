@@ -1,0 +1,65 @@
+name: Build HSA TOOL
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Extract source
+        run: |
+          mkdir source
+          unzip -q HSA-TOOL-iOS-CloudBuild.zip -d source
+
+      - name: Generate Xcode project
+        run: |
+          cd source
+          cat > project.yml <<'EOF'
+          name: HSATool
+          options:
+            deploymentTarget:
+              iOS: "15.0"
+          targets:
+            HSATool:
+              type: application
+              platform: iOS
+              sources:
+                - path: HSATool
+              info:
+                path: HSATool/Info.plist
+              settings:
+                base:
+                  PRODUCT_BUNDLE_IDENTIFIER: com.example.HSATool
+                  SWIFT_VERSION: "5.0"
+          EOF
+          xcodegen generate
+
+      - name: Build IPA
+        run: |
+          cd source
+          xcodebuild -project HSATool.xcodeproj \
+            -scheme HSATool \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO build
+
+      - name: Package IPA
+        run: |
+          mkdir Payload
+          cp -R source/build/Build/Products/Release-iphoneos/HSATool.app Payload/
+          zip -r HSA-TOOL-unsigned.ipa Payload
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: HSA-TOOL-IPA
+          path: HSA-TOOL-unsigned.ipa
